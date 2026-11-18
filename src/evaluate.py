@@ -1,6 +1,11 @@
 """Evaluation helpers for the Telco churn project."""
 
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from sklearn.inspection import permutation_importance
+
+from src.preprocessing import RANDOM_STATE
 from sklearn.metrics import (ConfusionMatrixDisplay, classification_report,
                              confusion_matrix)
 
@@ -44,3 +49,48 @@ def print_report(name, pipeline, X_test, y_test):
     y_pred = pipeline.predict(X_test)
     print(f"=== {name} ===")
     print(classification_report(y_test, y_pred, target_names=["No churn", "Churn"], digits=3))
+
+
+def get_transformed_feature_names(pipeline):
+    """Feature names after preprocessing, with the 'num__'/'cat__' prefix removed."""
+    names = pipeline.named_steps["preprocessor"].get_feature_names_out()
+    return [n.split("__", 1)[1] for n in names]
+
+
+def to_original_feature(transformed_name, categorical_cols):
+    """Map e.g. 'Contract_Month-to-month' back to 'Contract'."""
+    for col in sorted(categorical_cols, key=len, reverse=True):
+        if transformed_name.startswith(col + "_"):
+            return col
+    return transformed_name  # numeric columns keep their own name
+
+
+def coefficient_table(pipeline):
+    """Logistic Regression coefficients and odds ratios, largest magnitude first."""
+    t = pd.DataFrame({
+        "feature": get_transformed_feature_names(pipeline),
+        "coefficient": pipeline.named_steps["model"].coef_[0],
+    })
+    t["odds_ratio"] = np.exp(t["coefficient"])
+    t["abs_coef"] = t["coefficient"].abs()
+    return t.sort_values("abs_coef", ascending=False).reset_index(drop=True)
+
+
+def impurity_importance_table(pipeline, categorical_cols):
+    """Random Forest impurity-based importance per transformed (one-hot) column."""
+    t = pd.DataFrame({
+        "transformed_feature": get_transformed_feature_names(pipeline),
+        "importance": pipeline.named_steps["model"].feature_importances_,
+    })
+    t["feature"] = t["transformed_feature"].map(
+        lambda n: to_original_feature(n, categorical_cols))
+    return t
+
+
+def permutation_importance_table(pipeline, X, y, scoring="roc_auc", n_repeats=20):
+    """Permutation importance on the ORIGINAL 19 columns, through the full pipeline."""
+    r = permutation_importance(pipeline, X, y, scoring=scoring,
+                               n_repeats=n_repeats, random_state=RANDOM_STATE)
+    return (pd.DataFrame({"importance_mean": r.importances_mean,
+                          "importance_std": r.importances_std}, index=X.columns)
+            .sort_values("importance_mean", ascending=False))
