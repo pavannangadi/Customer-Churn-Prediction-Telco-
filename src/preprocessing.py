@@ -1,9 +1,58 @@
 """Data loading and cleaning helpers for the Telco churn project."""
 
 import pandas as pd
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 TARGET = "Churn"
 ID_COLUMN = "customerID"
+
+RANDOM_STATE = 42
+
+
+def split_features_target(df: pd.DataFrame):
+    """Separate the feature matrix X from the target y."""
+    X = df.drop(columns=[TARGET])
+    y = df[TARGET]
+    return X, y
+
+
+def get_train_test_split(df: pd.DataFrame, test_size: float = 0.2):
+    """80/20 stratified split so both sets keep the same churn ratio."""
+    X, y = split_features_target(df)
+    return train_test_split(
+        X, y, test_size=test_size, stratify=y, random_state=RANDOM_STATE
+    )
+
+
+def get_column_types(X: pd.DataFrame):
+    """Return (numeric_columns, categorical_columns).
+
+    SeniorCitizen is stored as 0/1 but is really a yes/no flag; it is kept
+    numeric, which is fine for these models.
+    """
+    numeric_cols = X.select_dtypes(include="number").columns.tolist()
+    categorical_cols = X.select_dtypes(exclude="number").columns.tolist()
+    return numeric_cols, categorical_cols
+
+
+def build_preprocessor(numeric_cols, categorical_cols) -> ColumnTransformer:
+    """Unfitted preprocessing: impute + scale numerics, impute + one-hot categoricals."""
+    numeric_pipe = Pipeline(steps=[
+        ("imputer", SimpleImputer(strategy="median")),
+        ("scaler", StandardScaler()),
+    ])
+    categorical_pipe = Pipeline(steps=[
+        ("imputer", SimpleImputer(strategy="most_frequent")),
+        ("onehot", OneHotEncoder(handle_unknown="ignore")),
+    ])
+    return ColumnTransformer(transformers=[
+        ("num", numeric_pipe, numeric_cols),
+        ("cat", categorical_pipe, categorical_cols),
+    ])
 
 
 def load_data(path: str) -> pd.DataFrame:
