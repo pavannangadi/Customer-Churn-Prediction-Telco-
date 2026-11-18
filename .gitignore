@@ -1,0 +1,17 @@
+# Virtual environment
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Data and models (keep out of git; README explains how to get/regenerate them)
+data/*.csv
+models/*.pkl
+
+# Editors / OS
+.vscode/
+.DS_Store
+Thumbs.db
